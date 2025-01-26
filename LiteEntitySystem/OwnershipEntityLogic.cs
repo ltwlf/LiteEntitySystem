@@ -14,9 +14,6 @@ namespace LiteEntitySystem
         // We'll define a server action. The client will call it to request/release ownership.
         private static RemoteCallSpan<byte> _ownershipRequestAction;
 
-        // Code used to "release" ownership back to server
-        private const byte ReleaseOwnershipCode = 0;
-
         protected OwnershipEntityLogic(EntityParams entityParams) : base(entityParams)
         {
         }
@@ -31,18 +28,18 @@ namespace LiteEntitySystem
         }
 
         /// <summary>
-        /// Called by client or server to request new ownership
-        /// If the server calls it, it directly sets the owner.
-        /// If the client calls it, it executes a server action 
-        /// so the server can decide.
+        /// Called by client or server to request new ownership.
+        /// The newOwnerId is optional.
+        /// If called on the client, it sets the owner by default to the local player.
+        /// If called on the server, the owner is set to the server.
         /// </summary>
         /// <param name="newOwnerId">0 to release to server, otherwise a player id</param>
-        public virtual void RequestOwnership(byte newOwnerId)
+        public virtual void RequestOwnership(byte? newOwnerId = null)
         {
             // If we are the server, we can do it immediately
             if (IsServer)
             {
-                SetOwner(this, newOwnerId);
+                SetOwner(this, newOwnerId ?? EntityManager.ServerPlayerId);
                 return;
             }
 
@@ -51,7 +48,7 @@ namespace LiteEntitySystem
             {
                 var writer = new NetDataWriter();
                 // Put newOwnerId
-                writer.Put(newOwnerId);
+                writer.Put(newOwnerId ?? ((ClientEntityManager)EntityManager).LocalPlayer.Id);
 
                 // Execute the server action, i.e. the OnOwnershipRequest method on server
                 ExecuteRPC(_ownershipRequestAction, writer.CopyData());
@@ -64,7 +61,7 @@ namespace LiteEntitySystem
         /// </summary>
         public virtual void ReleaseOwnership()
         {
-            RequestOwnership(ReleaseOwnershipCode);
+            RequestOwnership(EntityManager.ServerPlayerId);
         }
 
         /// <summary>
@@ -85,7 +82,7 @@ namespace LiteEntitySystem
 
             // Possibly do checks if the client is allowed to do this.
             // If valid, set owner
-            EntityLogic.SetOwner(this, requestedOwnerId);
+            SetOwner(this, requestedOwnerId);
         }
     }
 }
