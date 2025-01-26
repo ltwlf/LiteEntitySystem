@@ -9,6 +9,6 @@ namespace LiteEntitySystem.Transport
         public abstract void SendUnreliable(ReadOnlySpan<byte> data);
         public abstract int GetMaxUnreliablePacketSize();
         
-        internal NetPlayer AssignedPlayer;
+        public NetPlayer AssignedPlayer;
     }
 }
