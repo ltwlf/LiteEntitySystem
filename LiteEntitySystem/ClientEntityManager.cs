@@ -293,7 +293,7 @@ namespace LiteEntitySystem
 
             // Add packet header and type
             writer.Put(HeaderByte);
-            writer.Put((byte)InternalPackets.ClientRPC);
+            writer.Put(InternalPackets.ClientRPC);
 
             // Add entity ID and RPC ID
             writer.Put(entityId);
