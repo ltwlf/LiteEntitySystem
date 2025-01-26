@@ -291,59 +291,27 @@ namespace LiteEntitySystem
             {
                 throw new Exception($"No entity type registered for enum={type}");
             }
-
-            // 2) Reserve a new entity ID
-            if (_entityIdQueue.AvailableIds == 0)
-                throw new Exception("Reached maximum entity count!");
-
+            ref var classData = ref ClassDataDict[regInfo.ClassId];
+            
             ushort entityId = _entityIdQueue.GetNewId();
             ref var stateSerializer = ref _stateSerializers[entityId];
-
-            // 3) Prepare an IO buffer from the classData
-            //    so we can store entity data (see your original approach).
-            ref var classData = ref ClassDataDict[regInfo.ClassId];
+            
             byte[] ioBuffer = classData.AllocateDataCache();
-
-            // 4) Build the dataHeader
-            var dataHeader = new EntityDataHeader(
-                id: entityId,
-                classId: regInfo.ClassId,
-                version: stateSerializer.NextVersion,
-                updateOrder: ++_nextOrderNum
-            );
-
-            // 5) Create the entity params
-            var eParams = new EntityParams(
-                dataHeader,
-                this, // the manager
-                ioBuffer
-            );
-
-            // 6) Actually construct the entity using the stored constructor
-            InternalEntity rawEntity = regInfo.Constructor(eParams);
-
-            // 7) Attempt to cast to TBase (like EntityLogic)
-            if (rawEntity is not TBase typedEntity)
-            {
-                // If mismatch, free the ID, throw exception
-                _entityIdQueue.ReuseId(entityId);
-                throw new InvalidCastException(
-                    $"Constructed entity with eType={type} is {rawEntity.GetType().Name}, " +
-                    $"not a {typeof(TBase).Name}");
-            }
-
-            // 8) Let the state serializer init (some code may do that next)
-            stateSerializer.Init(rawEntity, _tick);
-
-            // 9) Call your optional init method
-            initMethod?.Invoke(typedEntity);
-
-            // 10) Do typical steps: ConstructEntity, track changes, etc.
-            ConstructEntity(rawEntity);
-            _changedEntities.Add(rawEntity);
-
-            // Return
-            return typedEntity;
+            stateSerializer.AllocateMemory(ref classData, ioBuffer);
+            var entity = AddEntity<TBase>(new EntityParams(
+                new EntityDataHeader(
+                    entityId,
+                    classData.ClassId,
+                    stateSerializer.NextVersion,
+                    ++_nextOrderNum),
+                this,
+                ioBuffer));
+            stateSerializer.Init(entity, _tick);
+            initMethod?.Invoke(entity);
+            ConstructEntity(entity);
+            _changedEntities.Add(entity);
+            
+            return entity;
         }
 
         /// <summary>
