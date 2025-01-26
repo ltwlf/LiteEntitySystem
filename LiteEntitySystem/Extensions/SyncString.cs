@@ -1,90 +1,106 @@
 using System;
 using System.Text;
-using LiteEntitySystem;
 
-public class SyncString : SyncableField
+namespace LiteEntitySystem.Extensions
 {
-    private static readonly UTF8Encoding Encoding = new(false, true);
-    private byte[] _stringData;
-    private string _string;
-    private int _size;
-
-    // A cached RemoteCall handle for "client actions" 
-    // that set the string on the client side.
-    private static RemoteCallSpan<byte> _setStringClientCall;
-
     /// <summary>
-    /// The user-facing property for reading/writing the string.
-    /// Setting this property on the server replicates the change.
-    /// Setting on the client is local only (unless you handle client->server separately).
+    /// A SyncableField that holds a string. On the server side, setting Value
+    /// replicates the new string data to clients. On the client side, when
+    /// updated from the server, it fires OnValueChanged(string).
     /// </summary>
-    public string Value
+    public class SyncString : SyncableField
     {
-        get => _string;
-        set
+        private static readonly UTF8Encoding Encoding = new(false, true);
+
+        // The actual string data
+        private string _string = string.Empty;
+
+        // A cached buffer for UTF-8 encoding
+        private byte[] _stringData;
+        private int _size;
+
+        // Cached remote call for "SetNewString"
+        private static RemoteCallSpan<byte> _setStringClientCall;
+
+        /// <summary>
+        /// This event is fired on the client side whenever the server
+        /// actually updates the string to a new value.
+        /// </summary>
+        public event Action<string> OnValueChanged;
+
+        /// <summary>
+        /// The user-facing property. If we are on the server and set it,
+        /// we replicate that new string to all clients.
+        /// </summary>
+        public string Value
         {
-            if (_string == value)
-                return;
+            get => _string;
+            set
+            {
+                if (_string == value)
+                    return; // no change, do nothing
 
-            _string = value;
+                _string = value;
 
-            // Allocate or resize the byte array if needed.
-            Utils.ResizeOrCreate(ref _stringData, Encoding.GetMaxByteCount(_string.Length));
+                // Convert to UTF-8 bytes
+                Utils.ResizeOrCreate(ref _stringData, Encoding.GetMaxByteCount(_string.Length));
+                _size = Encoding.GetBytes(_string, 0, _string.Length, _stringData, 0);
 
-            // Encode to UTF8.
-            _size = Encoding.GetBytes(_string, 0, _string.Length, _stringData, 0);
+                // If server, replicate out
+                if (IsServer)
+                {
+                    ExecuteRPC(_setStringClientCall, new ReadOnlySpan<byte>(_stringData, 0, _size));
+                }
+            }
+        }
 
-            // If we are on the server, replicate out to all clients.
-            if (IsServer)
+        /// <summary>
+        /// So you can do "string s = mySyncString;"
+        /// </summary>
+        public static implicit operator string(SyncString s)
+        {
+            return s.Value;
+        }
+
+        /// <summary>
+        /// Registers a client action (SetNewString) so that
+        /// when the server calls _setStringClientCall, the client runs SetNewString.
+        /// </summary>
+        protected internal override void RegisterRPC(ref SyncableRPCRegistrator r)
+        {
+            r.CreateClientAction(this, SetNewString, ref _setStringClientCall);
+        }
+
+        /// <summary>
+        /// Called on the server if the library wants to sync the
+        /// current state to a new client or do a full baseline sync, etc.
+        /// We replicate the current string data (if any).
+        /// </summary>
+        protected internal override void OnSyncRequested()
+        {
+            if (IsServer && _size > 0)
             {
                 ExecuteRPC(_setStringClientCall, new ReadOnlySpan<byte>(_stringData, 0, _size));
             }
         }
-    }
 
-    /// <summary>
-    /// Called once to register the "OnServerUpdate" method as a client action.
-    /// That means when the server executes _setStringClientCall, 
-    /// the client will run OnServerUpdate(ReadOnlySpan<byte>).
-    /// </summary>
-    protected internal override void RegisterRPC(ref SyncableRPCRegistrator r)
-    {
-        // We want a "client action" that receives a ReadOnlySpan<byte> 
-        // containing the updated string data from the server.
-        r.CreateClientAction(this, OnServerUpdate, ref _setStringClientCall);
-    }
-
-    /// <summary>
-    /// This method is invoked on the client side when the server
-    /// sends the "set string" RPC. We decode the bytes, check if changed,
-    /// then call RaiseClientValueChanged() if so.
-    /// </summary>
-    private void OnServerUpdate(ReadOnlySpan<byte> data)
-    {
-        string newVal = Encoding.GetString(data);
-        if (_string != newVal)
+        /// <summary>
+        /// This method is invoked on the client when the server updates the string.
+        /// We decode the new bytes, see if it's changed, and if so, fire OnValueChanged(string).
+        /// We also call RaiseClientValueChanged() to satisfy the base SyncableField.
+        /// </summary>
+        private void SetNewString(ReadOnlySpan<byte> data)
         {
-            _string = newVal;
-            // We changed the field => must call this or the base SyncableField 
-            // will throw in AfterReadRPC().
-            RaiseClientValueChanged();
-        }
-    }
+            string newVal = Encoding.GetString(data);
+            if (_string != newVal)
+            {
+                _string = newVal;
 
-    /// <summary>
-    /// If the library calls "OnSyncRequested()" on the server,
-    /// we do the initial replication so clients get the current string.
-    /// </summary>
-    protected internal override void OnSyncRequested()
-    {
-        if (IsServer && _stringData != null && _size > 0)
-        {
-            // Send the current string data to clients.
-            ExecuteRPC(_setStringClientCall, new ReadOnlySpan<byte>(_stringData, 0, _size));
+                // 1) Fire the typed event for the client
+                OnValueChanged?.Invoke(_string);
+            }
         }
-    }
-    public static implicit operator string(SyncString s)
-    {
-        return s.Value;
+
+        public override string ToString() => _string;
     }
 }
