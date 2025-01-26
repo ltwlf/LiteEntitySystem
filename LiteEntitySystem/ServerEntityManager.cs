@@ -69,11 +69,11 @@ namespace LiteEntitySystem
         /// <param name="sendRate">Send rate of server (depends on fps)</param>
         /// <param name="maxHistorySize">Maximum size of lag compensation history in ticks</param>
         public ServerEntityManager(
-            EntityTypesMap typesMap, 
-            byte packetHeader, 
+            EntityTypesMap typesMap,
+            byte packetHeader,
             byte framesPerSecond,
             ServerSendRate sendRate,
-            MaxHistorySize maxHistorySize = MaxHistorySize.Size32) 
+            MaxHistorySize maxHistorySize = MaxHistorySize.Size32)
             : base(typesMap, NetworkMode.Server, packetHeader, maxHistorySize)
         {
             InternalPlayerId = ServerPlayerId;
@@ -81,29 +81,6 @@ namespace LiteEntitySystem
             SendRate = sendRate;
             SetTickrate(framesPerSecond);
         }
-        
-        /// <summary>
-        /// Simplified constructor
-        /// </summary>
-        /// <param name="typesMap">EntityTypesMap with registered entity types</param>
-        /// <param name="packetHeader">Header byte that will be used for packets (to distinguish entity system packets)</param>
-        /// <param name="framesPerSecond">Fixed framerate of game logic</param>
-        /// <param name="sendRate">Send rate of server (depends on fps)</param>
-        /// <param name="maxHistorySize">Maximum size of lag compensation history in ticks</param>
-        /// <typeparam name="TInput">Main input packet type</typeparam>
-        public static ServerEntityManager Create<TInput>(
-            EntityTypesMap typesMap, 
-            byte packetHeader, 
-            byte framesPerSecond,
-            ServerSendRate sendRate,
-            MaxHistorySize maxHistorySize = MaxHistorySize.Size32) where TInput : unmanaged =>
-            new ServerEntityManager(
-                typesMap, 
-                new InputProcessor<TInput>(),
-                packetHeader,
-                framesPerSecond,
-                sendRate,
-                maxHistorySize);
 
         public override void Reset()
         {
@@ -129,7 +106,7 @@ namespace LiteEntitySystem
 
             if (_netPlayers.Count == 0)
                 _changedEntities.Clear();
-            
+
             var player = new NetPlayer(peer, _playerIdQueue.GetNewId())
             {
                 State = NetPlayerState.RequestBaseline,
@@ -291,11 +268,12 @@ namespace LiteEntitySystem
             {
                 throw new Exception($"No entity type registered for enum={type}");
             }
+
             ref var classData = ref ClassDataDict[regInfo.ClassId];
-            
+
             ushort entityId = _entityIdQueue.GetNewId();
             ref var stateSerializer = ref _stateSerializers[entityId];
-            
+
             byte[] ioBuffer = classData.AllocateDataCache();
             stateSerializer.AllocateMemory(ref classData, ioBuffer);
             var entity = AddEntity<TBase>(new EntityParams(
@@ -310,7 +288,7 @@ namespace LiteEntitySystem
             initMethod?.Invoke(entity);
             ConstructEntity(entity);
             _changedEntities.Add(entity);
-            
+
             return entity;
         }
 
@@ -338,9 +316,10 @@ namespace LiteEntitySystem
                 Logger.LogWarning($"Invalid data received. Length < 3: {inData.Length}");
                 return DeserializeResult.Error;
             }
+
             byte packetType = inData[0];
             inData = inData.Slice(1);
-            
+
             if (packetType == InternalPackets.ClientRequest)
             {
                 if (inData.Length < HumanControllerLogic.MinRequestSize)
@@ -348,6 +327,7 @@ namespace LiteEntitySystem
                     Logger.LogError("size less than minRequest");
                     return DeserializeResult.Error;
                 }
+
                 _pendingClientRequests.Enqueue(inData.ToArray());
                 return DeserializeResult.Done;
             }
@@ -363,65 +343,91 @@ namespace LiteEntitySystem
                 Logger.LogWarning($"[SEM] Unknown packet type: {packetType}");
                 return DeserializeResult.Error;
             }
+
+            int minInputSize = int.MaxValue;
+            int minDeltaSize = int.MaxValue;
+            foreach (var humanControllerLogic in GetEntities<HumanControllerLogic>())
+            {
+                if (humanControllerLogic.OwnerId != player.Id)
+                    continue;
+                minInputSize += humanControllerLogic.InputSize;
+                minDeltaSize += humanControllerLogic.MinInputDeltaSize;
+            }
+
             ushort clientTick = BitConverter.ToUInt16(inData);
             inData = inData.Slice(2);
             bool isFirstInput = true;
             while (inData.Length >= InputPacketHeader.Size)
             {
-                var inputBuffer = new InputBuffer{ Tick = clientTick };
+                var inputInfo = new InputInfo { Tick = clientTick };
                 fixed (byte* rawData = inData)
-                    inputBuffer.InputHeader = *(InputPacketHeader*)rawData;
-                inData = inData.Slice(sizeof(InputPacketHeader));
-                
+                    inputInfo.Header = *(InputPacketHeader*)rawData;
+
+                inData = inData.Slice(InputPacketHeader.Size);
+
                 //possibly empty but with header
                 if (isFirstInput && inData.Length < minInputSize)
                 {
                     Logger.LogError($"Bad input from: {player.Id} - {player.Peer} too small input");
                     return DeserializeResult.Error;
                 }
-                if (!isFirstInput && inData.Length < InputProcessor.MinDeltaSize)
+
+                if (!isFirstInput && inData.Length < minDeltaSize)
                 {
                     Logger.LogError($"Bad input from: {player.Id} - {player.Peer} too small delta");
                     return DeserializeResult.Error;
                 }
-                if (Utils.SequenceDiff(inputBuffer.InputHeader.StateA, Tick) > 0 ||
-                    Utils.SequenceDiff(inputBuffer.InputHeader.StateB, Tick) > 0)
+
+                if (Utils.SequenceDiff(inputInfo.Header.StateA, Tick) > 0 ||
+                    Utils.SequenceDiff(inputInfo.Header.StateB, Tick) > 0)
                 {
                     Logger.LogError($"Bad input from: {player.Id} - {player.Peer} invalid sequence");
                     return DeserializeResult.Error;
                 }
-                inputBuffer.InputHeader.LerpMsec = Math.Clamp(inputBuffer.InputHeader.LerpMsec, 0f, 1f);
-                
-                //decode delta
-                ReadOnlySpan<byte> actualData;
-                if (!isFirstInput) //delta
-                {
-                    Array.Clear(_inputDecodeBuffer, 0, InputProcessor.InputSize);
-                    var decodedData = new Span<byte>(_inputDecodeBuffer, 0, InputProcessor.InputSize);
-                    int readBytes = InputProcessor.DeltaDecode(inData, decodedData);
-                    actualData = decodedData;
-                    inData = inData.Slice(readBytes);
-                }
-                else //full
-                {
-                    isFirstInput = false;
-                    actualData = inData.Slice(0, InputProcessor.InputSize);
-                    InputProcessor.DeltaDecodeInit(actualData);
-                    inData = inData.Slice(InputProcessor.InputSize);
-                }
+
+                inputInfo.Header.LerpMsec = Math.Clamp(inputInfo.Header.LerpMsec, 0f, 1f);
+                if (Utils.SequenceDiff(inputInfo.Header.StateB, player.CurrentServerTick) > 0)
+                    player.CurrentServerTick = inputInfo.Header.StateB;
                 //Logger.Log($"ReadInput: {clientTick} stateA: {inputBuffer.InputHeader.StateA}");
                 clientTick++;
-                
-                if (Utils.SequenceDiff(inputBuffer.InputHeader.StateB, player.CurrentServerTick) > 0)
-                    player.CurrentServerTick = inputBuffer.InputHeader.StateB;
-                    
+
+
+                //remove oldest input if overflow
+                int removedTick = player.AvailableInput.Count == MaxStoredInputs
+                    ? player.AvailableInput.ExtractMin().Tick
+                    : -1;
+
+                //check that input is actual
+                bool correctInput = player.State == NetPlayerState.WaitingForFirstInput ||
+                                    Utils.SequenceDiff(inputInfo.Tick, player.LastReceivedTick) > 0;
+
                 //read input
-                if (player.State == NetPlayerState.WaitingForFirstInput || Utils.SequenceDiff(inputBuffer.Tick, player.LastReceivedTick) > 0)
+                foreach (var controller in GetEntities<HumanControllerLogic>())
                 {
-                    _inputPool.TryDequeue(out inputBuffer.Data);
-                    Utils.ResizeOrCreate(ref inputBuffer.Data, InputProcessor.InputSize);
-                    fixed(byte* inputData = inputBuffer.Data, rawDecodedData = actualData)
-                        RefMagic.CopyBlock(inputData, rawDecodedData, (uint)InputProcessor.InputSize);
+                    if (controller.OwnerId != player.Id)
+                        continue;
+
+                    if (removedTick >= 0)
+                        controller.RemoveIncomingInput((ushort)removedTick);
+
+                    //decode delta
+                    ReadOnlySpan<byte> actualData;
+
+                    if (!isFirstInput) //delta
+                    {
+                        var decodedData = new Span<byte>(_inputDecodeBuffer, 0, controller.InputSize);
+                        decodedData.Clear();
+                        int readBytes = controller.DeltaDecode(inData, decodedData);
+                        actualData = decodedData;
+                        inData = inData.Slice(readBytes);
+                    }
+                    else //full
+                    {
+                        isFirstInput = false;
+                        actualData = inData.Slice(0, controller.InputSize);
+                        controller.DeltaDecodeInit(actualData);
+                        inData = inData.Slice(controller.InputSize);
+                    }
 
                     if (correctInput)
                         controller.AddIncomingInput(inputInfo.Tick, actualData);
@@ -433,7 +439,6 @@ namespace LiteEntitySystem
                     //to reduce data
                     player.LastReceivedTick = inputInfo.Tick;
                 }
-                    
             }
 
             if (player.State == NetPlayerState.WaitingForFirstInput)
@@ -508,7 +513,8 @@ namespace LiteEntitySystem
                 _requestsReader.SetSource(_pendingClientRequests.Dequeue());
                 ushort controllerId = _requestsReader.GetUShort();
                 byte controllerVersion = _requestsReader.GetByte();
-                if (TryGetEntityById<HumanControllerLogic>(new EntitySharedReference(controllerId, controllerVersion), out var controller))
+                if (TryGetEntityById<HumanControllerLogic>(new EntitySharedReference(controllerId, controllerVersion),
+                        out var controller))
                     controller.ReadClientRequest(_requestsReader);
             }
 
