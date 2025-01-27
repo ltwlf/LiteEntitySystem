@@ -367,7 +367,12 @@ namespace LiteEntitySystem
                 bool correctInput = player.State == NetPlayerState.WaitingForFirstInput ||
                                     Utils.SequenceDiff(inputInfo.Tick, player.LastReceivedTick) > 0;
                 
-                if (inData.Length == 0)
+                //remove oldest input if overflow
+                int removedTick = player.AvailableInput.Count == MaxStoredInputs && correctInput
+                    ? player.AvailableInput.ExtractMin().Tick 
+                    : -1;
+                
+                if (correctInput && inData.Length == 0)
                 {
                     //empty input when no controllers
                     player.AvailableInput.Add(inputInfo, inputInfo.Tick);
@@ -400,12 +405,9 @@ namespace LiteEntitySystem
                     player.CurrentServerTick = inputInfo.Header.StateB;
                 //Logger.Log($"ReadInput: {clientTick} stateA: {inputInfo.Header.StateA}");
                 clientTick++;
+                    
+           
 
-
-                //remove oldest input if overflow
-                int removedTick = player.AvailableInput.Count == MaxStoredInputs
-                    ? player.AvailableInput.ExtractMin().Tick
-                    : -1;
                 
                 //read input
                 foreach (var controller in GetEntities<HumanControllerLogic>())
