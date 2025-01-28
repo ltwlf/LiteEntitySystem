@@ -24,7 +24,7 @@ namespace LiteEntitySystem
 
             // Create a 'server action' so the client can call into the server
             // The server side method is OnOwnershipRequest
-            r.CreateServerAction(this, OnOwnershipRequest, ref _ownershipRequestAction, ExecuteFlags.ExecuteOnServer);
+            r.CreateRPCAction(this, OnOwnershipRequest, ref _ownershipRequestAction, ExecuteFlags.ExecuteOnServer);
         }
 
         /// <summary>

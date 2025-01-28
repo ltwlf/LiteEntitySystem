@@ -405,9 +405,6 @@ namespace LiteEntitySystem
                     player.CurrentServerTick = inputInfo.Header.StateB;
                 //Logger.Log($"ReadInput: {clientTick} stateA: {inputInfo.Header.StateA}");
                 clientTick++;
-                    
-           
-
                 
                 //read input
                 foreach (var controller in GetEntities<HumanControllerLogic>())
