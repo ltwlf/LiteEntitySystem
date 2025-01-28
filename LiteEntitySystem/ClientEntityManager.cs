@@ -258,7 +258,7 @@ namespace LiteEntitySystem
             
             return entity;
         }
-        public void SendServerRPC<T>(ushort entityId, ushort rpcId, T value) where T : unmanaged
+        internal void SendServerRPC<T>(ushort entityId, ushort rpcId, T value) where T : unmanaged
         {
             // Prepare a NetDataWriter
             NetDataWriter writer = new NetDataWriter();
@@ -279,14 +279,14 @@ namespace LiteEntitySystem
                     Buffer.MemoryCopy(&value, byteArrayPtr, sizeof(T), sizeof(T));
                 }
 
-                writer.PutBytesWithLength(byteArray);
+                writer.Put(byteArray);
             }
 
             _netPeer.SendReliableOrdered(writer.AsReadOnlySpan());
         }
 
         // For "RemoteCallSpan<T>"
-        public void SendServerRPC<T>(ushort entityId, ushort rpcId, ReadOnlySpan<T> data) where T : unmanaged
+        internal void SendServerRPC<T>(ushort entityId, ushort rpcId, ReadOnlySpan<T> data) where T : unmanaged
         {
             // Prepare a NetDataWriter
             NetDataWriter writer = new NetDataWriter();
@@ -312,14 +312,14 @@ namespace LiteEntitySystem
             }
 
             // Write the byte array
-            writer.PutBytesWithLength(byteArray);
+            writer.Put(byteArray);
 
             // Send the data
             _netPeer.SendReliableOrdered(writer.AsReadOnlySpan());
         }
 
         // For "RemoteCallSerializable<T>"
-        public void SendServerRPC(ushort entityId, ushort rpcId, ReadOnlySpan<byte> data)
+        internal void SendServerRPC(ushort entityId, ushort rpcId, ReadOnlySpan<byte> data)
         {
             // Prepare a NetDataWriter
             NetDataWriter writer = new NetDataWriter();

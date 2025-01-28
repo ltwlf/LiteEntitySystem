@@ -365,6 +365,7 @@ namespace LiteEntitySystem.Internal
                 // If this call is meant to execute on server...
                 if (rpc.Flags.HasFlagFast(ExecuteFlags.ExecuteOnServer))
                 {
+                    // ... we manually serialize and send to the server
                     if (EntityManager is ClientEntityManager cem)
                     {
                         SpanWriter writer = new SpanWriter(stackalloc byte[value.MaxSize]);

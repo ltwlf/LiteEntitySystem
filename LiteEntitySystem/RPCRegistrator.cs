@@ -75,10 +75,10 @@ namespace LiteEntitySystem
         internal static MethodCallDelegate CreateMCD<TClass>(Action<TClass, T> methodToCall) =>
             (classPtr, buffer) =>
             {
-                var payload = new T();
+                var t = new T();
                 var dataReader = new NetDataReader(buffer.ToArray());
-                payload.Deserialize(dataReader);
-                methodToCall((TClass)classPtr, payload);
+                t.Deserialize(dataReader);
+                methodToCall((TClass)classPtr, t);
             };
 
         internal readonly Action<InternalEntity, T> CachedAction;
