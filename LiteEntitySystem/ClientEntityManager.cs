@@ -326,14 +326,14 @@ namespace LiteEntitySystem
 
             // Add packet header and type
             writer.Put(HeaderByte);
-            writer.Put((byte)InternalPackets.ClientRPC);
+            writer.Put(InternalPackets.ClientRPC);
 
             // Add entity ID and RPC ID
             writer.Put(entityId);
             writer.Put(rpcId);
 
             // Convert span to byte array and write
-            writer.PutBytesWithLength(data.ToArray());
+            writer.Put(data.ToArray());
 
             // Send the data
             _netPeer.SendReliableOrdered(writer.AsReadOnlySpan());

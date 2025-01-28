@@ -71,6 +71,8 @@ namespace LiteEntitySystem
     /// </summary>
     public abstract class EntityManager
     {
+        public EntityTypesMap TypesMap { get; }
+
         /// <summary>
         /// Maximum synchronized (without LocalOnly) entities
         /// </summary>
@@ -246,6 +248,7 @@ namespace LiteEntitySystem
             byte headerByte,
             MaxHistorySize maxHistorySize)
         {
+            TypesMap = typesMap;
             MaxHistorySize = maxHistorySize;
             HeaderByte = headerByte;
             ClassDataDict = new EntityClassData[typesMap.MaxId+1];

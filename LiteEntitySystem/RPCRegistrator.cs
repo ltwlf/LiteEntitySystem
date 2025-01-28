@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using LiteEntitySystem.Internal;
+using LiteNetLib.Utils;
 
 namespace LiteEntitySystem
 {
@@ -69,6 +70,31 @@ namespace LiteEntitySystem
         }
     }
     
+    public readonly struct RemoteCallNetSerializable<T> where T : INetSerializable, new()
+    {
+        internal static MethodCallDelegate CreateMCD<TClass>(Action<TClass, T> methodToCall) =>
+            (classPtr, buffer) =>
+            {
+                var t = new T();
+                var dataReader = new NetDataReader(buffer.ToArray());
+                t.Deserialize(dataReader);
+                methodToCall((TClass)classPtr, t);
+            };
+
+        internal readonly Action<InternalEntity, T> CachedAction;
+        internal readonly ushort Id;
+        internal readonly ExecuteFlags Flags;
+        internal readonly bool Initialized;
+
+        internal RemoteCallNetSerializable(Action<InternalEntity, T> action, ushort rpcId, ExecuteFlags flags)
+        {
+            CachedAction = action;
+            Id = rpcId;
+            Flags = flags;
+            Initialized = true;
+        }
+    }
+    
     public readonly struct RemoteCallSerializable<T> where T : struct, ISpanSerializable
     {
         internal static MethodCallDelegate CreateMCD<TClass>(Action<TClass, T> methodToCall) =>
@@ -115,6 +141,32 @@ namespace LiteEntitySystem
         //  SERVER ACTIONS (client calls, method runs on server)
         // --------------------------------------------------------------
 
+        public void CreateServerAction<TEntity, T>(
+            TEntity self,
+            Action<T> methodToCall,
+            ref RemoteCallNetSerializable<T> remoteCallHandle,
+            ExecuteFlags flags
+        )
+            where T : INetSerializable, new()
+            where TEntity : InternalEntity
+        {
+            CheckTarget(self, methodToCall.Target);
+
+            if (!remoteCallHandle.Initialized)
+            {
+                var finalFlags = flags | ExecuteFlags.ExecuteOnServer;
+                remoteCallHandle = new RemoteCallNetSerializable<T>(
+                    (e, val) => methodToCall.Method.CreateDelegateHelper<Action<TEntity, T>>()((TEntity)e, val),
+                    (ushort)_calls.Count,
+                    finalFlags
+                );
+            }
+
+            _calls.Add(new RpcFieldInfo(RemoteCallNetSerializable<T>.CreateMCD(
+                methodToCall.Method.CreateDelegateHelper<Action<TEntity, T>>()
+            )));
+        }
+        
         public void CreateServerAction<TEntity>(
             TEntity self,
             Action methodToCall,
@@ -243,6 +295,37 @@ namespace LiteEntitySystem
         {
             CheckTarget(self, onChangedAction.Target);
             BindOnChange(ref syncVar, onChangedAction.Method.CreateDelegateHelper<Action<TEntity, T>>(), executionOrder);
+        }
+        
+        
+        public void CreateRPCAction<TEntity, T>(
+            TEntity self,
+            Action<T> methodToCall,
+            ref RemoteCallNetSerializable<T> remoteCallHandle,
+            ExecuteFlags flags
+        ) 
+            where T : INetSerializable, new()
+            where TEntity : InternalEntity
+        {
+            CheckTarget(self, methodToCall.Target);
+            CreateRPCAction(methodToCall.Method.CreateDelegateHelper<Action<TEntity, T>>(), ref remoteCallHandle, flags);
+        }
+
+        public void CreateRPCAction<TEntity, T>(
+            Action<TEntity, T> methodToCall,
+            ref RemoteCallNetSerializable<T> remoteCallHandle,
+            ExecuteFlags flags
+        ) 
+            where T : INetSerializable, new()
+            where TEntity : InternalEntity
+        {
+            if (!remoteCallHandle.Initialized)
+                remoteCallHandle = new RemoteCallNetSerializable<T>(
+                    (e, v) => methodToCall((TEntity)e, v),
+                    (ushort)_calls.Count,
+                    flags
+                );
+            _calls.Add(new RpcFieldInfo(RemoteCallNetSerializable<T>.CreateMCD(methodToCall)));
         }
         
         /// <summary>

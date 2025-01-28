@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using LiteNetLib.Utils;
 
 namespace LiteEntitySystem.Internal
 {
@@ -375,6 +376,44 @@ namespace LiteEntitySystem.Internal
                             Id,
                             rpc.Id,
                             writer.RawData.Slice(0, writer.Position)
+                        );
+                    }
+                }
+            }
+        }
+
+
+        protected void ExecuteRPC<T>(in RemoteCallNetSerializable<T> rpc, T value) where T : INetSerializable, new()
+        {
+            if (IsServer)
+            {
+                if (rpc.Flags.HasFlagFast(ExecuteFlags.ExecuteOnServer))
+                    rpc.CachedAction(this, value);
+
+                var writer = new NetDataWriter();
+                value.Serialize(writer);
+                ServerManager.AddRemoteCall<byte>(this, writer.Data, rpc.Id, rpc.Flags);
+            }
+            else
+            {
+                // If client and ExecuteOnPrediction + local-controlled, call locally
+                if (rpc.Flags.HasFlagFast(ExecuteFlags.ExecuteOnPrediction) && IsLocalControlled)
+                    rpc.CachedAction(this, value);
+
+                // If this call is meant to execute on server...
+                if (rpc.Flags.HasFlagFast(ExecuteFlags.ExecuteOnServer))
+                {
+                    // ... we manually serialize and send to the server
+                    if (EntityManager is ClientEntityManager cem)
+                    {
+                        var writer = new NetDataWriter();
+                        value.Serialize(writer);
+
+                        // Send the serialized bytes to the server
+                        cem.SendServerRPC(
+                            Id,
+                            rpc.Id,
+                            writer.CopyData()
                         );
                     }
                 }
