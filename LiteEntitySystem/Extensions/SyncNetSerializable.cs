@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic; // For EqualityComparer<T>
 using K4os.Compression.LZ4;
 using LiteNetLib.Utils;
@@ -36,7 +36,7 @@ namespace LiteEntitySystem.Extensions
                 OnSyncRequested();
             }
         }
-
+        
         protected internal override void RegisterRPC(ref SyncableRPCRegistrator r)
         {
             r.CreateClientAction(this, Init, ref _initAction);
@@ -85,6 +85,8 @@ namespace LiteEntitySystem.Extensions
         {
             ushort origSize = BitConverter.ToUInt16(data); // uncompressed size
 
+            var oldValue = _value;
+            
             if (CompressionBuffer == null || CompressionBuffer.Length < origSize)
                 CompressionBuffer = new byte[origSize];
 
