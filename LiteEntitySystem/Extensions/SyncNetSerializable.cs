@@ -36,16 +36,7 @@ namespace LiteEntitySystem.Extensions
                 OnSyncRequested();
             }
         }
-
-        private static RemoteCallSpan<byte> _initAction;
-
-        private readonly Func<T> _constructor;
-
-        public SyncNetSerializable(Func<T> constructor)
-        {
-            _constructor = constructor;
-        }
-
+        
         protected internal override void RegisterRPC(ref SyncableRPCRegistrator r)
         {
             r.CreateClientAction(this, Init, ref _initAction);
@@ -82,6 +73,8 @@ namespace LiteEntitySystem.Extensions
         {
             ushort origSize = BitConverter.ToUInt16(data); // uncompressed size
 
+            var oldValue = _value;
+            
             if (CompressionBuffer == null || CompressionBuffer.Length < origSize)
                 CompressionBuffer = new byte[origSize];
             LZ4Codec.Decode(data[2..], new Span<byte>(CompressionBuffer));

@@ -73,12 +73,11 @@ namespace LiteEntitySystem
             get => _value;
             set
             {
-                if (Container != null && !Utils.FastEquals(ref value, ref _value))
+                if (!Utils.FastEquals(ref value, ref _value))
                 {
-                    Container.EntityManager.EntityFieldChanged(Container, FieldId, ref value);
+                    Container?.EntityManager.EntityFieldChanged(Container, FieldId, ref value);
                     ValueChanged?.Invoke(this, new SyncVarChangedEventArgs<T>(_value, value));
                 }
-
                 _value = value;
             }
         }
