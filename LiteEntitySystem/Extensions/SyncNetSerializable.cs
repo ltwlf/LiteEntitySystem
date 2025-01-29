@@ -1,23 +1,17 @@
 ﻿using System;
-using System.Collections.Generic;  // For EqualityComparer<T>
+using System.Collections.Generic; // For EqualityComparer<T>
 using K4os.Compression.LZ4;
 using LiteNetLib.Utils;
 
 namespace LiteEntitySystem.Extensions
 {
-    public class SyncNetSerializable<T> : SyncableField where T : INetSerializable
+    public class SyncNetSerializable<T> : SyncableField<T> where T : INetSerializable
     {
         private static readonly NetDataWriter WriterCache = new();
         private static readonly NetDataReader ReaderCache = new();
         private static byte[] CompressionBuffer;
 
         private T _value;
-
-        /// <summary>
-        /// Fired on the client after the server has updated this field,
-        /// but only if the new value is different (via EqualityComparer).
-        /// </summary>
-        public event Action<T> OnValueChanged;
 
         private static RemoteCallSpan<byte> _initAction;
 
@@ -28,10 +22,12 @@ namespace LiteEntitySystem.Extensions
             _constructor = constructor;
         }
 
+        public override event EventHandler<SyncVarChangedEventArgs<T>> ValueChanged;
+
         /// <summary>
         /// The user-facing property; setting on the server will replicate out.
         /// </summary>
-        public T Value
+        public override T Value
         {
             get => _value;
             set
@@ -50,7 +46,7 @@ namespace LiteEntitySystem.Extensions
         {
             // Ensure we have an instance (for the first time)
             _value ??= _constructor();
-            
+
             WriterCache.Reset();
             _value.Serialize(WriterCache);
 
@@ -87,7 +83,7 @@ namespace LiteEntitySystem.Extensions
         /// </summary>
         private void Init(ReadOnlySpan<byte> data)
         {
-            ushort origSize = BitConverter.ToUInt16(data);  // uncompressed size
+            ushort origSize = BitConverter.ToUInt16(data); // uncompressed size
 
             if (CompressionBuffer == null || CompressionBuffer.Length < origSize)
                 CompressionBuffer = new byte[origSize];
@@ -111,7 +107,7 @@ namespace LiteEntitySystem.Extensions
             // (If your T doesn't implement a meaningful equality, this may fire every time.)
             if (oldValue == null || !EqualityComparer<T>.Default.Equals(oldValue, _value))
             {
-                OnValueChanged?.Invoke(_value);
+                ValueChanged?.Invoke(this, new SyncVarChangedEventArgs<T>(oldValue, _value));
             }
         }
 

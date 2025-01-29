@@ -8,7 +8,7 @@ namespace LiteEntitySystem.Extensions
     /// replicates the new string data to clients. On the client side, when
     /// updated from the server, it fires OnValueChanged(string).
     /// </summary>
-    public class SyncString : SyncableField
+    public class SyncString : SyncableField<string>
     {
         private static readonly UTF8Encoding Encoding = new(false, true);
 
@@ -22,17 +22,13 @@ namespace LiteEntitySystem.Extensions
         // Cached remote call for "SetNewString"
         private static RemoteCallSpan<byte> _setStringClientCall;
 
-        /// <summary>
-        /// This event is fired on the client side whenever the server
-        /// actually updates the string to a new value.
-        /// </summary>
-        public event Action<string> OnValueChanged;
+        public override event EventHandler<SyncVarChangedEventArgs<string>> ValueChanged;
 
         /// <summary>
         /// The user-facing property. If we are on the server and set it,
         /// we replicate that new string to all clients.
         /// </summary>
-        public string Value
+        public override string Value
         {
             get => _string;
             set
@@ -94,11 +90,10 @@ namespace LiteEntitySystem.Extensions
             string newVal = Encoding.GetString(data);
             if (_string != newVal)
             {
+                ValueChanged?.Invoke(this, new SyncVarChangedEventArgs<string>(_string, newVal));
                 _string = newVal;
-
-                // 1) Fire the typed event for the client
-                OnValueChanged?.Invoke(_string);
             }
+           
         }
 
         public override string ToString() => _string;
