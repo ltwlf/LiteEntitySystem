@@ -1,10 +1,11 @@
-﻿using System;
+using System;
+using System.Collections.Generic; // For EqualityComparer<T>
 using K4os.Compression.LZ4;
 using LiteNetLib.Utils;
 
 namespace LiteEntitySystem.Extensions
 {
-    public class SyncNetSerializable<T> : SyncableField where T : INetSerializable
+    public class SyncNetSerializable<T> : SyncableField<T> where T : INetSerializable
     {
         private static readonly NetDataWriter WriterCache = new();
         private static readonly NetDataReader ReaderCache = new();
@@ -12,7 +13,21 @@ namespace LiteEntitySystem.Extensions
         
         private T _value;
 
-        public T Value
+        private static RemoteCallSpan<byte> _initAction;
+
+        private readonly Func<T> _constructor;
+
+        public SyncNetSerializable(Func<T> constructor)
+        {
+            _constructor = constructor;
+        }
+
+        public override event EventHandler<SyncVarChangedEventArgs<T>> ValueChanged;
+
+        /// <summary>
+        /// The user-facing property; setting on the server will replicate out.
+        /// </summary>
+        public override T Value
         {
             get => _value;
             set
@@ -38,6 +53,9 @@ namespace LiteEntitySystem.Extensions
 
         protected internal override void OnSyncRequested()
         {
+            // Ensure we have an instance (for the first time)
+            _value ??= _constructor();
+
             WriterCache.Reset();
             _value.Serialize(WriterCache);
             if (WriterCache.Length > ushort.MaxValue)
@@ -62,13 +80,21 @@ namespace LiteEntitySystem.Extensions
 
         private void Init(ReadOnlySpan<byte> data)
         {
-            ushort origSize = BitConverter.ToUInt16(data);
+            ushort origSize = BitConverter.ToUInt16(data); // uncompressed size
+
             if (CompressionBuffer == null || CompressionBuffer.Length < origSize)
                 CompressionBuffer = new byte[origSize];
             LZ4Codec.Decode(data[2..], new Span<byte>(CompressionBuffer));
             ReaderCache.SetSource(CompressionBuffer, 0, origSize);
             _value ??= _constructor();
             _value.Deserialize(ReaderCache);
+
+            // Compare old and new. If changed, raise event.
+            // (If your T doesn't implement a meaningful equality, this may fire every time.)
+            if (oldValue == null || !EqualityComparer<T>.Default.Equals(oldValue, _value))
+            {
+                ValueChanged?.Invoke(this, new SyncVarChangedEventArgs<T>(oldValue, _value));
+            }
         }
 
         public static implicit operator T(SyncNetSerializable<T> field)
