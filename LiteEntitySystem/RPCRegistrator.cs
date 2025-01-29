@@ -174,7 +174,20 @@ namespace LiteEntitySystem
             where TEntity : InternalEntity
         {
             CheckTarget(self, methodToCall.Target);
-            CreateRPCAction(methodToCall.Method.CreateDelegateHelper<Action<TEntity, T>>(), ref remoteCallHandle, flags);
+
+            if (!remoteCallHandle.Initialized)
+            {
+                var finalFlags = flags | ExecuteFlags.ExecuteOnServer;
+                remoteCallHandle = new RemoteCallNetSerializable<T>(
+                    (e, val) => methodToCall.Method.CreateDelegateHelper<Action<TEntity, T>>()((TEntity)e, val),
+                    (ushort)_calls.Count,
+                    finalFlags
+                );
+            }
+
+            _calls.Add(new RpcFieldInfo(RemoteCallNetSerializable<T>.CreateMCD(
+                methodToCall.Method.CreateDelegateHelper<Action<TEntity, T>>()
+            )));
         }
 
         public void CreateRPCAction<TEntity, T>(
