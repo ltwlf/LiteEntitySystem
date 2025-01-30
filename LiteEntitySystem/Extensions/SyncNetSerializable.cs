@@ -86,8 +86,6 @@ namespace LiteEntitySystem.Extensions
             // Read uncompressed size
             ushort origSize = BitConverter.ToUInt16(data);
 
-            var oldValue = _value;
-            
             if (CompressionBuffer == null || CompressionBuffer.Length < origSize)
                 CompressionBuffer = new byte[origSize];
 
