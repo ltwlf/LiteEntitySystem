@@ -83,10 +83,9 @@ namespace LiteEntitySystem.Extensions
         /// </summary>
         private void Init(ReadOnlySpan<byte> data)
         {
-            ushort origSize = BitConverter.ToUInt16(data); // uncompressed size
+            // Read uncompressed size
+            ushort origSize = BitConverter.ToUInt16(data);
 
-            var oldValue = _value;
-            
             if (CompressionBuffer == null || CompressionBuffer.Length < origSize)
                 CompressionBuffer = new byte[origSize];
 
@@ -96,22 +95,23 @@ namespace LiteEntitySystem.Extensions
             // Prepare NetDataReader
             ReaderCache.SetSource(CompressionBuffer, 0, origSize);
 
-            // Keep track of the old value for change detection
+            // Capture the old reference
             T oldValue = _value;
 
-            // Ensure we have an instance (for the first time)
-            _value ??= _constructor();
+            // Always create a fresh instance for deserialization
+            T newValue = _constructor();
+            newValue.Deserialize(ReaderCache);
 
-            // Deserialize into _value
-            _value.Deserialize(ReaderCache);
+            // Update _value
+            _value = newValue;
 
             // Compare old and new. If changed, raise event.
-            // (If your T doesn't implement a meaningful equality, this may fire every time.)
             if (oldValue == null || !EqualityComparer<T>.Default.Equals(oldValue, _value))
             {
                 ValueChanged?.Invoke(this, new SyncVarChangedEventArgs<T>(oldValue, _value));
             }
         }
+
 
         /// <summary>
         /// Allows implicit usage like "T t = mySyncNetSerializable;".
