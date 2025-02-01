@@ -496,12 +496,12 @@ namespace LiteEntitySystem
             }
             else
             {
-                e.OnConstructed();
                 _entityFilters[classData.FilterId]?.Add(e);
                 foreach (var baseTypeInfo in classData.BaseTypes)
                     _entityFilters[baseTypeInfo.Id]?.Add(e);
                 if (IsEntityLagCompensated(e))
                     LagCompensatedEntities.Add((EntityLogic)e);
+                e.OnConstructed();
             }
             if (IsEntityAlive(classData.Flags, e))
             {
