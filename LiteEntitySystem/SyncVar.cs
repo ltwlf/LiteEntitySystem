@@ -118,7 +118,12 @@ namespace LiteEntitySystem
         {
             add
             {
-                // If Container is null or FieldId is 0, consider how you want to handle "uninitialized" states.
+                if (Container == null)
+                {
+                    throw new InvalidOperationException(
+                        "SyncVar<T> ValueChanged must be registered after base.RegisterRPC");
+                }
+
                 lock (_registryLock)
                 {
                     var key = (Container, FieldId);
