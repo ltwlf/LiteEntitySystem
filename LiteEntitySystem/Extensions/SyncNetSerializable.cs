@@ -71,25 +71,35 @@ namespace LiteEntitySystem.Extensions
 
         private void Init(ReadOnlySpan<byte> data)
         {
-            ushort origSize = BitConverter.ToUInt16(data); // uncompressed size
+            // Read uncompressed size
+            ushort origSize = BitConverter.ToUInt16(data);
 
-            var oldValue = _value;
-            
             if (CompressionBuffer == null || CompressionBuffer.Length < origSize)
                 CompressionBuffer = new byte[origSize];
             LZ4Codec.Decode(data[2..], new Span<byte>(CompressionBuffer));
             ReaderCache.SetSource(CompressionBuffer, 0, origSize);
-            _value ??= _constructor();
-            _value.Deserialize(ReaderCache);
+
+            // Capture the old reference
+            T oldValue = _value;
+
+            // Always create a fresh instance for deserialization
+            T newValue = _constructor();
+            newValue.Deserialize(ReaderCache);
+
+            // Update _value
+            _value = newValue;
 
             // Compare old and new. If changed, raise event.
-            // (If your T doesn't implement a meaningful equality, this may fire every time.)
             if (oldValue == null || !EqualityComparer<T>.Default.Equals(oldValue, _value))
             {
                 ValueChanged?.Invoke(this, new SyncVarChangedEventArgs<T>(oldValue, _value));
             }
         }
 
+
+        /// <summary>
+        /// Allows implicit usage like "T t = mySyncNetSerializable;".
+        /// </summary>
         public static implicit operator T(SyncNetSerializable<T> field)
         {
             return field._value;
