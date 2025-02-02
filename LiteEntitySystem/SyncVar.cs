@@ -28,10 +28,22 @@ namespace LiteEntitySystem
     {
         public readonly SyncFlags Flags;
         public readonly OnSyncExecutionOrder OnSyncExecutionOrder;
+        public readonly string OnChangeCallback;
         
         public SyncVarFlags(SyncFlags flags)
         {
             Flags = flags;
+        }
+        
+        public SyncVarFlags(string onChangeCallback)
+        {
+            OnChangeCallback = onChangeCallback;
+        }
+        
+        public SyncVarFlags(SyncFlags flags, string onChangeCallback)
+        {
+            Flags = flags;
+            OnChangeCallback = onChangeCallback;
         }
         
         public SyncVarFlags(OnSyncExecutionOrder executionOrder)
@@ -43,6 +55,13 @@ namespace LiteEntitySystem
         {
             Flags = flags;
             OnSyncExecutionOrder = executionOrder;
+        }
+        
+        public SyncVarFlags(SyncFlags flags, OnSyncExecutionOrder executionOrder, string onChangeCallback)
+        {
+            Flags = flags;
+            OnSyncExecutionOrder = executionOrder;
+            OnChangeCallback = onChangeCallback;
         }
     }
 
