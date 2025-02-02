@@ -1,17 +1,29 @@
 using System;
-using System.Collections.Generic; // For EqualityComparer<T>
+using System.Collections.Generic;
 using K4os.Compression.LZ4;
 using LiteNetLib.Utils;
 
 namespace LiteEntitySystem.Extensions
 {
-    public class SyncNetSerializable<T> : SyncableField<T> where T : INetSerializable
+    public class SyncNetSerializable<T> : SyncableField, ISyncFieldChanged<T> where T : INetSerializable
     {
         private static readonly NetDataWriter WriterCache = new();
         private static readonly NetDataReader ReaderCache = new();
         private static byte[] CompressionBuffer;
 
         private T _value;
+
+        public event Action<T, T> ValueChanged;
+
+        public T Value
+        {
+            get => _value;
+            set
+            {
+                _value = value;
+                OnSyncRequested();
+            }
+        }
 
         private static RemoteCallSpan<byte> _initAction;
 
@@ -72,8 +84,6 @@ namespace LiteEntitySystem.Extensions
                 2,
                 CompressionBuffer.Length - 2,
                 LZ4Level.L00_FAST);
-
-            // Send the compressed data + 2 bytes of uncompressed length
             ExecuteRPC(_initAction, new ReadOnlySpan<byte>(CompressionBuffer, 0, encodedLength + 2));
         }
 
@@ -108,7 +118,7 @@ namespace LiteEntitySystem.Extensions
             // Compare old and new. If changed, raise event.
             if (oldValue == null || !EqualityComparer<T>.Default.Equals(oldValue, _value))
             {
-                ValueChanged?.Invoke(this, new SyncVarChangedEventArgs<T>(oldValue, _value));
+                ValueChanged?.Invoke(oldValue, newValue);
             }
         }
 
