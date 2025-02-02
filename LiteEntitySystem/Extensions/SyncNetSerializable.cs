@@ -33,21 +33,6 @@ namespace LiteEntitySystem.Extensions
         {
             _constructor = constructor;
         }
-
-        public override event EventHandler<SyncVarChangedEventArgs<T>> ValueChanged;
-
-        /// <summary>
-        /// The user-facing property; setting on the server will replicate out.
-        /// </summary>
-        public override T Value
-        {
-            get => _value;
-            set
-            {
-                _value = value;
-                OnSyncRequested();
-            }
-        }
         
         protected internal override void RegisterRPC(ref SyncableRPCRegistrator r)
         {

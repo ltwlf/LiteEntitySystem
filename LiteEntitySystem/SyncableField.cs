@@ -1,6 +1,5 @@
 using System;
 using LiteEntitySystem.Internal;
-using Unity.VisualScripting.YamlDotNet.Core.Tokens;
 
 namespace LiteEntitySystem
 {
@@ -84,11 +83,5 @@ namespace LiteEntitySystem
                 ParentEntityInternal.ServerManager.AddRemoteCall<byte>(ParentEntityInternal, writer.RawData.Slice(0, writer.Position), (ushort)(rpc.Id + RPCOffset), Flags);
             }
         }
-    }
-    
-    public abstract class SyncableField<T> : SyncableField, INotifySyncVarChanged<T>
-    {
-        public abstract event EventHandler<SyncVarChangedEventArgs<T>> ValueChanged;
-        public abstract T Value { get; set; }
     }
 }
